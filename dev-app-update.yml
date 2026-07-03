@@ -1,0 +1,4 @@
+provider: github
+owner: pavankokane
+repo: cybage-tracker
+updaterCacheDirName: cybage-tracker-updater

@@ -1,0 +1,77 @@
+appId: com.cybage.attendance-scraper
+productName: Cybage Tracker
+
+directories:
+  buildResources: build
+  output: dist
+
+# Explicitly include the output folder and package.json to prevent app bloat
+files:
+  - "dist/**/*" 
+  - "package.json"
+  - "!**/.vscode/*"
+  - "!src/*"
+  - "!electron.vite.config.{js,ts,mjs,cjs}"
+  - "!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
+  - "!{.env,.env.*,.npmrc,pnpm-lock.yaml}"
+
+asarUnpack:
+  - resources/**
+
+# -------------------------
+# WINDOWS
+# -------------------------
+win:
+  icon: build/icon.ico
+  executableName: cybage-tracker
+  target:
+    - nsis        
+    - portable    
+
+nsis:
+  artifactName: ${name}-Setup-v${version}.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+
+portable:
+  artifactName: ${name}-v${version}.${ext}
+
+# -------------------------
+# MACOS
+# -------------------------
+mac:
+  icon: build/icon.icns
+  category: public.app-category.utilities
+  target:
+    - dmg         
+    - zip         
+
+dmg:
+  artifactName: ${name}-${version}.${ext}
+
+# -------------------------
+# LINUX
+# -------------------------
+linux:
+  icon: build/icon.png
+  category: Utility
+  maintainer: "Cybage Software Pvt Ltd <support@cybage.com>"
+  target:
+    - AppImage    
+    - deb
+
+# Fixed case-sensitivity here: appImage instead of AppImage
+appImage:
+  artifactName: ${name}-app-${version}.${ext}
+
+deb:
+  artifactName: ${name}-${version}.${ext}
+
+# -------------------------
+# AUTO UPDATE + GITHUB
+# -------------------------
+publish:
+  provider: github
+  owner: pavankokane
+  repo: cybage-tracker

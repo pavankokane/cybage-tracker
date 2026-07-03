@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+body {
+  background-color: #0a1120;
+  margin: 0;
+  overflow: hidden; /* Prevent full body scroll, handle inside components */
+}
+
+/* Custom Scrollbar for the sleek native look */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #475569;
+}
