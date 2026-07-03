@@ -171,12 +171,22 @@ export default function Dashboard() {
         }
       }
 
-      if (status.includes('holiday')) dailyOffice += 8.0
+      // Credit 8 hours for Holiday and Leave
+      if (
+        status.includes('holiday') ||
+        status.includes('leave')
+      ) {
+        dailyOffice += 8.0
+      }
       let dailyTotal = dailyOffice + dailyWfh
 
       if (dateParts[1] === currentMonth && dateParts[2] === currentYear) {
         let displayHours = appMode === 'wfo' ? hoursStr : `🏢 ${hoursStr} | 🏠 ${wfhStr}`
-        if (status.includes('holiday')) displayHours += ' (+8h Hol)'
+        if (status.includes('holiday')) {
+          displayHours += ' (+8h Hol)'
+        } else if (status.includes('leave')) {
+          displayHours += ' (+8h Leave)'
+        }
         dailyLogs.push({ date: dateStr, hours: displayHours, status: row['Status'] || 'Regular' })
       }
 
