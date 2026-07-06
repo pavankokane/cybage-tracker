@@ -1,7 +1,7 @@
 {
   "name": "cybage-tracker",
-  "version": "1.0.1",
-  "description": "A cross-platform desktop application built with Electron.js that automates the tracking of attendance logs and work hours for Cybage employees. This application securely scrapes swipe data from the Cybage MIS portal and Work-From-Home (WFH) activity from ESPlus, replacing traditional terminal outputs with a clean, user-friendly Graphical User Interface (GUI).",
+  "version": "1.0.2",
+  "description": "Automatically tracks attendance and work hours by securely collecting swipe logs from the Cybage MIS portal and WFHactivity from ESPlus in a desktop application.",
   "main": "./out/main/index.js",
   "author": {
     "name": "Cybage Software Pvt Ltd",
@@ -27,7 +27,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@tailwindcss/vite": "^4.3.1",
     "electron-updater": "^6.3.9",
-    "puppeteer": "^25.2.1",
+    "puppeteer-core": "^25.3.0",
     "tailwindcss": "^4.3.1"
   },
   "devDependencies": {
@@ -49,44 +49,5 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/pavankokane/cybage-tracker.git"
-  },
-  "build": {
-    "appId": "com.cybage.attendance-scraper",
-    "productName": "Cybage Tracker",
-    "directories": {
-      "output": "dist"
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "pavankokane",
-        "repo": "cybage-tracker"
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.utilities",
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "icon": "resources/icon.icns"
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
-      "icon": "resources/icon.ico"
-    },
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "icon": "resources/icon.png",
-      "category": "Utility",
-      "maintainer": "Cybage Software Pvt Ltd <support@cybage.com>",
-      "syncDesktopName": true
-    }
   }
 }

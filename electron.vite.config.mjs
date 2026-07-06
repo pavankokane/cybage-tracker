@@ -4,14 +4,32 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  main: {},
-  preload: {},
+  main: {
+    build: {
+      sourcemap: false,
+      minify: 'esbuild'
+    }
+  },
+
+  preload: {
+    build: {
+      sourcemap: false,
+      minify: 'esbuild'
+    }
+  },
+
   renderer: {
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [react(),tailwindcss()]
+
+    plugins: [react(), tailwindcss()],
+
+    build: {
+      sourcemap: false,
+      minify: 'esbuild'
+    }
   }
 })

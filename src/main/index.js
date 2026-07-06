@@ -1,14 +1,14 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import puppeteer from 'puppeteer'
+import puppeteer from 'puppeteer-core'
 import icon from '../../resources/icon.png'
 import fs from 'fs' // Native file system locator
 
 let mainWindow
 let scrapingStatus = { status: 'idle', logs: [] }
 let latestScrapedData = { attendance_rows: [], timetable_rows: [] }
-const URL = 'https://cybagemis.cybage.com/Framework/Iframe.aspx'
+const URL = 'http://cybagemis.cybage.com/Framework/Iframe.aspx'
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -41,55 +41,6 @@ function createWindow() {
 }
 
 // =================================================================
-// 🗺️ CROSS-PLATFORM SYSTEM CHROME LOCATOR
-// =================================================================
-function getSystemChromePath() {
-  const platform = process.platform
-  const userHome = app.getPath('home')
-
-  if (platform === 'darwin') {
-    const globalMac = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-    const localMac = path.join(
-      userHome,
-      'Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-    )
-    if (fs.existsSync(globalMac)) return globalMac
-    if (fs.existsSync(localMac)) return localMac
-  } else if (platform === 'win32') {
-    const winPaths = [
-      path.join(
-        process.env['ProgramFiles'] || 'C:\\Program Files',
-        'Google\\Chrome\\Application\\chrome.exe'
-      ),
-      path.join(
-        process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
-        'Google\\Chrome\\Application\\chrome.exe'
-      ),
-      path.join(
-        process.env['LocalAppData'] || path.join(userHome, 'AppData\\Local'),
-        'Google\\Chrome\\Application\\chrome.exe'
-      )
-    ]
-    for (const winPath of winPaths) {
-      if (fs.existsSync(winPath)) return winPath
-    }
-  } else if (platform === 'linux') {
-    const linuxPaths = [
-      '/usr/bin/google-chrome',
-      '/usr/bin/google-chrome-stable',
-      '/usr/bin/chromium',
-      '/usr/bin/chromium-browser',
-      '/snap/bin/chromium'
-    ]
-    for (const linPath of linuxPaths) {
-      if (fs.existsSync(linPath)) return linPath
-    }
-  }
-
-  return null
-}
-
-// =================================================================
 // 🚀 NATIVE PUPPETEER SCRAPER LOGIC
 // =================================================================
 async function runScraperLogic(mode, credentials) {
@@ -103,30 +54,28 @@ async function runScraperLogic(mode, credentials) {
     payload: latestScrapedData
   })
 
-  const chromePath = getSystemChromePath()
-
-  if (!chromePath) {
-    scrapingStatus.status = 'failed'
-    scrapingStatus.logs.push(
-      '❌ Error: Google Chrome / Chromium was not found on this system. Please install Google Chrome standard version.'
-    )
-    mainWindow.webContents.send('scraper-status-updated', {
-      scraper: scrapingStatus,
-      payload: latestScrapedData
-    })
-    return
-  }
-
   let browser
   try {
     browser = await puppeteer.launch({
       headless: true, // Change to false for debugging
-      executablePath: chromePath,
+      channel: 'chrome',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--window-size=1920,1080',
-        '--disable-blink-features=AutomationControlled'
+        '--disable-blink-features=AutomationControlled',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-extensions',
+        '--mute-audio',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-popup-blocking',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding'
       ]
     })
     const page = await browser.newPage()
@@ -379,25 +328,21 @@ async function runScraperLogic(mode, credentials) {
         pushLog(`🌐 Missing swipes for ${missingDates.length} day(s). Fetching ESPlus data...`)
         
         const esPage = await browser.newPage()
-        await esPage.goto('https://esplusapps.cybage.com/ESPlusPlatform', {
-          waitUntil: 'domcontentloaded'
+        await esPage.setViewport({ width: 1920, height: 1080 })
+
+        await esPage.authenticate({
+          username: safeCredentials.username || '',
+          password: safeCredentials.password || ''
         })
 
-        try {
-          const passInput = await esPage.waitForSelector("input[type='password']", { timeout: 5000 })
-          if (passInput) {
-            const emailInput = await esPage.$("input[type='text'], input[type='email'], input[name='username']")
-            if (emailInput) await emailInput.type(safeCredentials.username || '')
-            await passInput.type(safeCredentials.password || '')
-            await esPage.keyboard.press('Enter')
-            await esPage.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {})
-          }
-        } catch {}
+        await esPage.goto('http://esplusapps.cybage.com/ESPlusPlatform', {
+          waitUntil: 'domcontentloaded'
+        })
 
         for (const mDate of missingDates) {
           pushLog(`   -> Extracting ActiveTime strictly for ${mDate.name}: ${mDate.iso}`)
           await esPage.goto(
-            `https://esplusapps.cybage.com/ESPlusManagerDashboardAPIV2/api/activity/personal?from=${mDate.iso}&to=${mDate.iso}`,
+            `http://esplusapps.cybage.com/ESPlusManagerDashboardAPIV2/api/activity/personal?from=${mDate.iso}&to=${mDate.iso}`,
             { waitUntil: 'domcontentloaded' }
           )
 
