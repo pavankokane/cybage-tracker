@@ -28,13 +28,12 @@ files:
 # -------------------------
 win:
   icon: build/icon.ico
-  executableName: cybage-tracker
   target:
-    - nsis        
-    - portable    
+    - nsis
+    - portable
 
 nsis:
-  artifactName: ${name}-Setup-v${version}.${ext}
+  artifactName: ${name}-setup-v${version}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -55,12 +54,10 @@ mac:
   cscLink: null
   hardenedRuntime: true
   gatekeeperAssess: false
+  artifactName: ${name}-v${version}-mac.${ext}
   target:
-    - dmg         
-    - zip         
-
-dmg:
-  artifactName: ${name}-v${version}.${ext}
+    - dmg
+    - zip
 
 # -------------------------
 # LINUX
@@ -71,7 +68,7 @@ linux:
   maintainer: "Cybage Software Pvt Ltd <support@cybage.com>"
   synopsis: "Attendance tracker for Cybage employees"
   target:
-    - AppImage    
+    - AppImage
     - deb
 
 appImage:

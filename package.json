@@ -1,6 +1,6 @@
 {
   "name": "cybage-tracker",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Automatically tracks attendance and work hours by securely collecting swipe logs from the Cybage MIS portal and WFHactivity from ESPlus in a desktop application.",
   "main": "./out/main/index.js",
   "author": {
