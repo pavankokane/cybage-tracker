@@ -3,7 +3,6 @@ import path from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import puppeteer from 'puppeteer-core'
 import icon from '../../resources/icon.png'
-import fs from 'fs' // Native file system locator
 
 let mainWindow
 let scrapingStatus = { status: 'idle', logs: [] }
@@ -26,6 +25,7 @@ function createWindow() {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    if (!is.dev) optimizer.watchWindowShortcuts(mainWindow)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -203,7 +203,10 @@ async function runScraperLogic(mode, credentials) {
           if (rowData.length >= 12 && rowData[2].includes('-')) {
             const rowDict = {}
             headers.forEach((h, idx) => {
-              if (idx < rowData.length) rowDict[h] = rowData[idx]
+              if (idx < rowData.length) {
+                // If the column is 'Date', replace all spaces and slashes with a dash
+                rowDict[h] = h === 'Date' ? rowData[idx].replace(/[\s/]/g, '-') : rowData[idx]
+              }
             })
             return rowDict
           }
@@ -272,7 +275,7 @@ async function runScraperLogic(mode, credentials) {
                 ) {
                   extracted.push({
                     'Employee ID': rowData[0],
-                    Date: rowData[1],
+                    Date: rowData[1].replace(/[\s/]/g, '-'), // Bulletproof dash conversion
                     'Machine Name': rowData[2],
                     Direction: rowData[3],
                     Time: rowData[4]

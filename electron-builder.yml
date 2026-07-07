@@ -51,6 +51,10 @@ portable:
 mac:
   icon: build/icon.icns
   category: public.app-category.utilities
+  identity: null
+  cscLink: null
+  hardenedRuntime: true
+  gatekeeperAssess: false
   target:
     - dmg         
     - zip         

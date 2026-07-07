@@ -54,15 +54,23 @@ export default function Dashboard() {
       let isWfhToday = false
       let currentInTime = null
 
+      const now = new Date()
+      const currentMonth = now.toLocaleString('default', { month: 'short' })
+      const currentYear = now.getFullYear().toString()
+      const todayStr = `${now.getDate().toString().padStart(2, '0')}-${currentMonth}-${currentYear}`
+
       const sortedTimetable = [...timetableData].sort((a, b) => {
-        const timeA = new Date(`${a.Date} ${a.Time}`)
-        const timeB = new Date(`${b.Date} ${b.Time}`)
+        const timeA = new Date(`${a.Date.replace(/-/g, ' ')} ${a.Time}`)
+        const timeB = new Date(`${b.Date.replace(/-/g, ' ')} ${b.Time}`)
         return timeA - timeB
       })
 
-      // Locate this area inside your React Dashboard file's live metric calculation hook:
       sortedTimetable.forEach((log) => {
         if (!log || !log['Machine Name'] || !log['Date'] || !log['Time']) return
+        
+        // Strictly isolate calculations to today's date only
+        if (log['Date'] !== todayStr) return
+
         const machine = String(log['Machine Name']).toLowerCase()
 
         if (
@@ -70,25 +78,28 @@ export default function Dashboard() {
           machine.includes('barrier') ||
           machine.includes('basement')
         ) {
-          const logTime = new Date(`${log.Date} ${log.Time}`)
+          const logTime = new Date(`${log.Date.replace(/-/g, ' ')} ${log.Time}`)
           const direction = String(log.Direction).trim().toLowerCase()
 
           if (machine.includes('wfh')) isWfhToday = true
 
-          // 🟢 FLEXIBLE HARDWARE TRACKING LOGIC
           if (direction === 'entry') {
-            // Set or overwrite the entry pin to handle consecutive entries seamlessly
-            currentInTime = logTime
+            // Only update the clock-in anchor if we don't already have an open one
+            if (!currentInTime) {
+              currentInTime = logTime
+            }
           }
 
-          if (direction === 'exit' && currentInTime) {
-            // Calculates time elapsed between ANY valid entry point and this exit location
-            totalSeconds += (logTime - currentInTime) / 1000
-            currentInTime = null // Reset pin, waiting for the next entry event
+          if (direction === 'exit') {
+            if (currentInTime) {
+              totalSeconds += (logTime - currentInTime) / 1000
+              currentInTime = null // Cleanly closed session
+            }
           }
         }
       })
 
+      // If the last log today was an entry with no closing exit, you are currently inside!
       if (currentInTime && !isWfhToday) {
         isCurrentlyIn = true
         totalSeconds += (new Date() - currentInTime) / 1000
@@ -171,7 +182,6 @@ export default function Dashboard() {
         }
       }
 
-      // Credit 8 hours for Holiday and Leave
       if (
         status.includes('holiday') ||
         status.includes('leave')
@@ -191,18 +201,8 @@ export default function Dashboard() {
       }
 
       const monthMap = {
-        Jan: 0,
-        Feb: 1,
-        Mar: 2,
-        Apr: 3,
-        May: 4,
-        Jun: 5,
-        Jul: 6,
-        Aug: 7,
-        Sep: 8,
-        Oct: 9,
-        Nov: 10,
-        Dec: 11
+        Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+        Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11
       }
       const rowDate = new Date(
         parseInt(dateParts[2], 10),
@@ -262,6 +262,14 @@ export default function Dashboard() {
           remaining: rem > 0 ? `${formatHhmm(rem)} left` : '✅ Target Met'
         }
       })
+      
+    // 🟢 NEW: Sort daily logs in descending order (latest dates at the top)
+    dailyLogs.sort((a, b) => {
+      // Swap dashes for spaces so JS can safely parse the dates
+      const dateA = new Date(a.date.replace(/-/g, ' '))
+      const dateB = new Date(b.date.replace(/-/g, ' '))
+      return dateB - dateA // b - a creates descending order
+    })
 
     setReports({ daily: dailyLogs, weekly: weeklyReport })
   }, [attendanceData, metrics.rawSeconds, appMode])
@@ -300,7 +308,6 @@ export default function Dashboard() {
     const user = localStorage.getItem('cybage_user')
     const pass = localStorage.getItem('cybage_pass')
 
-    // Force configuration collection modal if parameters aren't stored locally
     if (!user || !pass) {
       setShowAuthModal(true)
       return
@@ -317,12 +324,10 @@ export default function Dashboard() {
     setSavedUser(usernameInput)
     setShowAuthModal(false)
 
-    // Auto-trigger refresh right after saving
     setScraperState({ status: 'running', logs: ['Dispatched browser refresh pipeline call...'] })
     window.electronAPI.triggerRefresh(appMode, { username: usernameInput, password: passwordInput })
   }
 
-  // 🟢 CONFIGURATION DELETION INTERACTION
   const clearCredentials = () => {
     localStorage.removeItem('cybage_user')
     localStorage.removeItem('cybage_pass')
@@ -358,7 +363,6 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* 🟢 CREDENTIAL MANAGEMENT SECTION IN HOME SPLASH */}
           <div className="pt-4 border-t border-slate-700 text-left space-y-3">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Credential Engine Settings
@@ -386,7 +390,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 🟢 INPUT MODAL OVERLAY */}
         {showAuthModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm z-50">
             <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
@@ -471,7 +474,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Modal activation hook layout from inside dashboard frames */}
         {showAuthModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm z-50">
             <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-2xl">
