@@ -112,6 +112,22 @@ export default function Dashboard() {
     const currentYear = now.getFullYear().toString()
     const todayStr = `${now.getDate().toString().padStart(2, '0')}-${currentMonth}-${currentYear}`
 
+    // 1. DATE NORMALIZER
+    const normalizeToDdmmyyyy = (dateStr) => {
+      if (!dateStr) return ''
+      const clean = String(dateStr).replace(/[\s/]/g, '-').trim()
+      const parts = clean.split('-')
+      if (parts.length < 3) return clean
+      if (isNaN(parts[1])) {
+        const capitalizedMonth = parts[1].charAt(0).toUpperCase() + parts[1].slice(1).toLowerCase()
+        return `${parts[0].padStart(2, '0')}-${capitalizedMonth}-${parts[2]}`
+      }
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+      const monthIdx = parseInt(parts[1], 10) - 1
+      if (monthIdx >= 0 && monthIdx < 12) return `${parts[0].padStart(2, '0')}-${months[monthIdx]}-${parts[2]}`
+      return clean
+    }
+
     const swipeTotalsByDateStr = {}
     const daysGroup = {}
     let isCurrentlyInToday = false
@@ -120,9 +136,9 @@ export default function Dashboard() {
 
     timetableData.forEach((log) => {
       if (!log || !log['Machine Name'] || !log['Date'] || !log['Time']) return
-      const localizedKey = String(log.Date).trim()
+      const localizedKey = normalizeToDdmmyyyy(log.Date)
       if (!daysGroup[localizedKey]) daysGroup[localizedKey] = []
-      daysGroup[localizedKey].push(log)
+      daysGroup[localizedKey].push({ ...log, Date: localizedKey })
     })
 
     Object.keys(daysGroup).forEach((dStr) => {
@@ -134,7 +150,9 @@ export default function Dashboard() {
 
       sortedLogs.forEach((log) => {
         const machine = String(log['Machine Name']).toLowerCase()
-        if (machine.includes('tripod') || machine.includes('barrier') || machine.includes('basement')) {
+        
+        // 2. STRICT MACHINE FILTER (No Main Gate allowed!)
+        if ((machine.includes('tripod') || machine.includes('barrier') || machine.includes('basement')) && !machine.includes('main gate')) {
           const logTime = parseCustomDateTime(log.Date, log.Time)
           const direction = String(log.Direction).trim().toLowerCase()
 
@@ -166,7 +184,7 @@ export default function Dashboard() {
 
     let dailyLogs = []
     let weeklyTotals = {}
-    let todayProcessedInHistory = false
+    const processedDates = new Set() // Track portal dates
 
     const getWeekRangeString = (targetDate) => {
       const dayOfWeek = targetDate.getDay()
@@ -194,12 +212,13 @@ export default function Dashboard() {
       const dateParts = dateStr.split('-')
       if (dateParts.length < 3) return
 
+      processedDates.add(dateStr)
+
       let dailyOffice = parseHoursToFloat(hoursStr)
       let dailyWfh = parseHoursToFloat(wfhStr)
 
       if (swipeTotalsByDateStr[dateStr] > 0) {
         if (dateStr === todayStr) {
-          todayProcessedInHistory = true
           if (isWfhToday) {
             dailyWfh = swipeTotalsByDateStr[dateStr]
             wfhStr = formatHhmm(dailyWfh)
@@ -226,10 +245,7 @@ export default function Dashboard() {
         dailyLogs.push({ date: dateStr, hours: displayHours + (dateStr === todayStr ? ' (Live)' : ''), status: row['Status'] || 'Regular' })
       }
 
-      const monthMap = {
-        Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-        Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11
-      }
+      const monthMap = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 }
       const rowDate = new Date(parseInt(dateParts[2], 10), monthMap[dateParts[1]], parseInt(dateParts[0], 10))
 
       if (!isNaN(rowDate)) {
@@ -243,29 +259,50 @@ export default function Dashboard() {
       }
     })
 
-    if (!todayProcessedInHistory && todayLiveSeconds > 0) {
-      let dailyOffice = isWfhToday ? 0 : todayLiveSeconds / 3600
-      let dailyWfh = isWfhToday ? todayLiveSeconds / 3600 : 0
-      const currentHoursFormatted = formatHhmm(todayLiveSeconds / 3600)
+    // 3. UNIVERSAL MISSING DATE INJECTION
+    Object.keys(swipeTotalsByDateStr).forEach((missingDateStr) => {
+      if (!processedDates.has(missingDateStr)) {
+        const totalSecs = swipeTotalsByDateStr[missingDateStr] * 3600
+        const isThisToday = missingDateStr === todayStr
 
-      let displayHours = appMode === 'wfo'
-          ? currentHoursFormatted
-          : isWfhToday ? `🏢 00:00  |  🏠 ${currentHoursFormatted}` : `🏢 ${currentHoursFormatted}  |  🏠 00:00`
+        if (totalSecs > 0 || isThisToday) {
+          let dailyOffice = (isThisToday && isWfhToday) ? 0 : (totalSecs / 3600)
+          let dailyWfh = (isThisToday && isWfhToday) ? (totalSecs / 3600) : 0
+          const currentHoursFormatted = formatHhmm(totalSecs / 3600)
+
+          let displayHours = appMode === 'wfo'
+              ? currentHoursFormatted
+              : (isThisToday && isWfhToday) ? `🏢 00:00  |  🏠 ${currentHoursFormatted}` : `🏢 ${currentHoursFormatted}  |  🏠 00:00`
+              
+          const dateParts = missingDateStr.split('-')
           
-      dailyLogs.unshift({ date: todayStr, hours: displayHours + ' (Live)', status: 'Regular' })
+          if (dateParts[1] === currentMonth && dateParts[2] === currentYear) {
+            dailyLogs.push({ 
+              date: missingDateStr, 
+              hours: displayHours + (isThisToday ? ' (Live)' : ' (Calc from Logs)'), 
+              status: 'Processing...' 
+            })
+          }
 
-      const { weekStr, mondayRef } = getWeekRangeString(now)
-      if (!weeklyTotals[weekStr]) {
-        weeklyTotals[weekStr] = { office: 0, wfh: 0, total: 0, sortDate: mondayRef }
+          const monthMap = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 }
+          const rowDate = new Date(parseInt(dateParts[2], 10), monthMap[dateParts[1]], parseInt(dateParts[0], 10))
+          
+          if (!isNaN(rowDate)) {
+            const { weekStr, mondayRef } = getWeekRangeString(rowDate)
+            if (!weeklyTotals[weekStr]) {
+              weeklyTotals[weekStr] = { office: 0, wfh: 0, total: 0, sortDate: mondayRef }
+            }
+            weeklyTotals[weekStr].office += dailyOffice
+            weeklyTotals[weekStr].wfh += dailyWfh
+            weeklyTotals[weekStr].total += dailyOffice + dailyWfh
+          }
+        }
       }
-      weeklyTotals[weekStr].office += dailyOffice
-      weeklyTotals[weekStr].wfh += dailyWfh
-      weeklyTotals[weekStr].total += dailyOffice + dailyWfh
-    }
+    })
 
     // Standardized 8-Hour Daily Calculation Rule
     let formattedExitTime = 'N/A'
-    const targetSecondsToday = 8 * 3600 // 8 hours total shift target metric boundary
+    const targetSecondsToday = 8 * 3600 
 
     if (isWfhToday && appMode === 'wfh') {
       formattedExitTime = 'N/A (WFH)'
@@ -302,7 +339,7 @@ export default function Dashboard() {
 
     dailyLogs.sort((a, b) => {
       const parseStrDate = (s) => {
-        const p = s.replace(' (Live)', '').split('-')
+        const p = s.replace(' (Live)', '').replace(' (Calc from Logs)', '').split('-')
         const m = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 }
         return new Date(parseInt(p[2]), m[p[1]], parseInt(p[0]))
       }
