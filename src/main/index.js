@@ -3,6 +3,7 @@ import path from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import puppeteer from 'puppeteer-core' // Use 'puppeteer' if you don't supply an executablePath
 import icon from '../../resources/icon.png'
+import dns from 'dns'
 
 let mainWindow
 let scrapingStatus = { status: 'idle', logs: [] }
@@ -42,20 +43,16 @@ function createWindow() {
 
 async function isCompanyNetworkAvailable() {
   try {
-    // Set a strict 4-second timeout so the app doesn't hang forever
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 4000)
+    await Promise.race([
+      dns.lookup('cybagemis.cybage.com'),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout')), 4000)
+      )
+    ])
 
-    // A lightweight HEAD request just to see if the DNS resolves
-    await fetch(URL, { 
-      method: 'HEAD', 
-      signal: controller.signal 
-    })
-
-    clearTimeout(timeoutId)
-    return true // Server responded, we are on the company network/VPN
-  } catch (error) {
-    return false // Network error or timeout, we are external
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -175,6 +172,17 @@ async function runScraperLogic(mode, credentials) {
       targetFrame = page; 
     } else {
       // --- NORMAL NETWORK BLOCK ---
+      const pushLog = (msg) => {
+        scrapingStatus.logs.push(msg)
+        mainWindow.webContents.send('scraper-status-updated', {
+          scraper: scrapingStatus,
+          payload: latestScrapedData
+        })
+      }
+
+      pushLog('🌐 Connecting directly to target MIS framework servers...')
+      await page.goto(URL, { waitUntil: 'networkidle2' })
+
       pushLog('1. Evaluating localized portal page layouts...')
       const reportsBtn = await page.waitForSelector('xpath///a[text()="Report Builder"]', {
         timeout: 15000

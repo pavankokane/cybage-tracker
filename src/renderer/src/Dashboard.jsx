@@ -1,8 +1,22 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
 export default function Dashboard() {
   const [appMode, setAppMode] = useState(null)
   const [scraperState, setScraperState] = useState({ status: 'idle', logs: [] })
+
+  // 📜 AUTO-SCROLL REF
+  const scrollContainerRef = useRef(null)
+
+  // Auto-scroll ONLY the log container to the bottom
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      const { scrollHeight, clientHeight } = scrollContainerRef.current;
+      scrollContainerRef.current.scrollTo({
+        top: scrollHeight - clientHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [scraperState.logs])
   
   // 🌓 CORE STATE THEME MANAGEMENT (No Tailwind configuration changes required)
   const [isDark, setIsDark] = useState(() => {
@@ -636,11 +650,20 @@ export default function Dashboard() {
             {/* LIVE CONSOLE PANEL */}
             <div className={`p-6 rounded-2xl border space-y-3 ${themeCard}`}>
               <h2 className={`text-xs font-bold uppercase tracking-widest ${themeSubtext}`}>Scraper Engine Console</h2>
-              <div className={`p-4 rounded-xl h-40 overflow-y-auto font-mono text-[11px] space-y-1.5 scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none] border ${isDark ? 'bg-slate-950 text-emerald-400/90 border-slate-900' : 'bg-slate-50 text-emerald-700 border-slate-200'}`}>
+              
+              {/* Attach the ref directly to this scrolling container */}
+              <div 
+                ref={scrollContainerRef}
+                className={`p-4 rounded-xl h-40 overflow-y-auto font-mono text-[11px] space-y-1.5 scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none] border ${isDark ? 'bg-slate-950 text-emerald-400/90 border-slate-900' : 'bg-slate-50 text-emerald-700 border-slate-200'}`}
+              >
                 {scraperState.logs.length === 0 ? (
                   <p className={`italic select-none ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>System communication pipelines idle.</p>
                 ) : (
-                  scraperState.logs.map((log, i) => <p key={i} className={`leading-relaxed border-l-2 pl-1.5 ${isDark ? 'border-emerald-500/20' : 'border-emerald-500/40'}`}>{log}</p>)
+                  scraperState.logs.map((log, i) => (
+                    <p key={i} className={`leading-relaxed border-l-2 pl-1.5 ${isDark ? 'border-emerald-500/20' : 'border-emerald-500/40'}`}>
+                      {log}
+                    </p>
+                  ))
                 )}
               </div>
             </div>
