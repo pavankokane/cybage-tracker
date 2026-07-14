@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Menu } from 'electron'
 import path from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import puppeteer from 'puppeteer-core' // Use 'puppeteer' if you don't supply an executablePath
@@ -47,12 +47,12 @@ async function isCompanyNetworkAvailable() {
       dns.lookup('cybagemis.cybage.com'),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout')), 4000)
-      )
-    ])
+      ),
+    ]);
 
-    return true
-  } catch {
-    return false
+    return true;
+  } catch (err) {
+    return false;
   }
 }
 
@@ -70,9 +70,6 @@ async function runScraperLogic(mode, credentials) {
     payload: latestScrapedData
   })
 
-  // ---------------------------------------------------------
-  // 🔍 PRE-FLIGHT NETWORK CHECK
-  // ---------------------------------------------------------
   const pushLog = (msg) => {
     scrapingStatus.logs.push(msg)
     mainWindow.webContents.send('scraper-status-updated', { scraper: scrapingStatus, payload: latestScrapedData })
@@ -111,7 +108,8 @@ async function runScraperLogic(mode, credentials) {
       ]
     })
     
-    const page = await browser.newPage()
+    // ⚠️ CHANGED TO `let` SO WE CAN REASSIGN DURING HANDOFF
+    let page = await browser.newPage()
     await page.setViewport({ width: 1920, height: 1080 })
 
     await page.authenticate({
@@ -138,48 +136,59 @@ async function runScraperLogic(mode, credentials) {
 
       pushLog('📱 2FA REQUIRED: Please complete 2FA in the opened browser window. (Waiting 5 mins...)')
       
-      // ==========================================
-      // 🔄 FIXED 5-SECOND POLLING LOOP FOR 2FA
-      // ==========================================
       let twoFactorPassed = false
-      const maxAttempts = 60 // 60 attempts * 5 seconds = 300 seconds (5 mins)
+      const maxAttempts = 60
       
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        // Convert the URL to lowercase to prevent case-sensitivity bugs
         const currentUrl = page.url().toLowerCase()
-        
-        // Now it will correctly match 'sslvpn/portal' or 'report%20builder' regardless of casing
         if (currentUrl.includes('sslvpn/portal') || currentUrl.includes('report%20builder')) {
           twoFactorPassed = true
           break
         }
-        
-        // Send a status update to the frontend every 5 seconds
         pushLog(`⏳ Checking 2FA status... (Attempt ${attempt}/${maxAttempts} - Waiting 5s)`)
-        await new Promise(r => setTimeout(r, 5000)) // Wait 5 seconds
+        await new Promise(r => setTimeout(r, 5000))
       }
 
       if (!twoFactorPassed) {
         throw new Error('2FA timed out. Please run the sync again and complete 2FA within 5 minutes.')
       }
-      // ==========================================
 
-      pushLog('✅ 2FA passed! Routing directly to Report Builder...')
-      await page.goto('https://ctvpn.cybage.com/sslvpn/PT/https://cybagemis.cybage.com/Report%20Builder/RPTN/Reportpage.aspx', { waitUntil: 'networkidle2' })
+      // ==============================================================
+      // 🔄 VISIBLE -> HEADLESS SESSION HANDOFF
+      // ==============================================================
+      pushLog('✅ 2FA passed! Capturing session credentials...')
+      const sessionCookies = await page.cookies()
       
-      // When routed this way, the report builder is usually the main page, not inside a frame.
-      // But we will map targetFrame to page so the rest of the script works identically.
-      targetFrame = page; 
+      pushLog('👻 Transitioning to stealth (headless) mode...')
+      await browser.close()
+      
+      browser = await puppeteer.launch({
+        headless: true, // Force headless now
+        channel: 'chrome',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--window-size=1920,1080',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-gpu',
+          '--disable-dev-shm-usage',
+        ]
+      })
+      
+      const newPage = await browser.newPage()
+      await newPage.setViewport({ width: 1920, height: 1080 })
+      await newPage.setCookie(...sessionCookies) // Inject 2FA cookies
+      
+      pushLog('✅ Session transferred. Routing to Report Builder...')
+      await newPage.goto('https://ctvpn.cybage.com/sslvpn/PT/https://cybagemis.cybage.com/Report%20Builder/RPTN/Reportpage.aspx', { waitUntil: 'networkidle2' })
+      
+      // Update our references so the rest of the script uses the new headless page
+      page = newPage;
+      targetFrame = newPage; 
+      // ==============================================================
+
     } else {
       // --- NORMAL NETWORK BLOCK ---
-      const pushLog = (msg) => {
-        scrapingStatus.logs.push(msg)
-        mainWindow.webContents.send('scraper-status-updated', {
-          scraper: scrapingStatus,
-          payload: latestScrapedData
-        })
-      }
-
       pushLog('🌐 Connecting directly to target MIS framework servers...')
       await page.goto(URL, { waitUntil: 'networkidle2' })
 
@@ -264,12 +273,7 @@ async function runScraperLogic(mode, credentials) {
     await targetFrame.waitForSelector("td[id$='ReportCell']", { visible: true, timeout: 60000 })
     await new Promise((r) => setTimeout(r, 5000))
     
-    // Fallback if targetFrame is the main page (VPN routing)
-    if (needsVpn) {
-      await page.keyboard.press('End')
-    } else {
-      await page.keyboard.press('End')
-    }
+    await page.keyboard.press('End')
     await new Promise((r) => setTimeout(r, 2000))
 
     pushLog('8. Formatting text rows into structured JSON segments...')
@@ -308,15 +312,12 @@ async function runScraperLogic(mode, credentials) {
     let allSwipeData = [] 
 
     try {
-      // 💡 SMART CONTEXT: Find the iframe (WFO), or fallback to the main page (VPN)
       let workingFrame = page.frames().find(f => f.name() === 'RPTN_Reportpage') || page;
         
-      // 1. Go back to main menu
       const backBtn = await workingFrame.waitForSelector('#BackImage', { visible: true, timeout: 15000 })
       await backBtn.evaluate((node) => node.click())
       await new Promise((r) => setTimeout(r, 3000))
 
-      // 2. Click Today/Yesterday Menu
       const timeTableMenuBtn = await workingFrame.waitForSelector('#TempleteTreeViewt7', { visible: true, timeout: 15000 })
       await timeTableMenuBtn.evaluate((node) => node.click())
       await new Promise((r) => setTimeout(r, 3000)) 
@@ -326,10 +327,8 @@ async function runScraperLogic(mode, credentials) {
       for (const day of swipeTargets) {
         pushLog(`--> Selecting '${day.name}' from dropdown...`)
         try {
-          // Always ensure we have the live context after potential ASP postbacks
           workingFrame = page.frames().find(f => f.name() === 'RPTN_Reportpage') || page;
 
-          // 3. SELF-HEALING: If dropdown is missing, reset view
           let dropdownExists = await workingFrame.$("select[title='Day']")
           if (!dropdownExists) {
             pushLog(`   🔄 Recovering broken frame state for ${day.name}...`)
@@ -338,7 +337,6 @@ async function runScraperLogic(mode, credentials) {
             await new Promise((r) => setTimeout(r, 3000))
           }
 
-          // 4. Force the dropdown value
           await workingFrame.waitForSelector("select[title='Day']", { visible: true, timeout: 15000 })
           await workingFrame.evaluate((val) => {
             const dropdown = document.querySelector("select[title='Day']")
@@ -350,17 +348,12 @@ async function runScraperLogic(mode, credentials) {
           
           await new Promise((r) => setTimeout(r, 1500))
 
-          // 5. Generate the report
           const dayGenBtn = await workingFrame.waitForSelector("input[title='Generate Report']", { visible: true, timeout: 10000 })
           await dayGenBtn.evaluate((node) => node.click())
           
           pushLog(`   ⏳ Waiting for ${day.name} portal to respond...`)
-          
-          // 6. REPLICATED PYTHON LOGIC: Wait for the structural report cell container OR a "No Data" container
-          // Give it a 5-second baseline sleep just like Python's wait_for_timeout
           await new Promise((r) => setTimeout(r, 5000)) 
 
-          // Check if "No Data" text element exists in the DOM
           const isNoDataVisible = await workingFrame.evaluate(() => {
             return document.body.innerText.includes("Sorry, data is not available");
           })
@@ -370,13 +363,10 @@ async function runScraperLogic(mode, credentials) {
           } else {
             pushLog(`   📊 Table detected. Finalizing row processing...`)
             
-            // Explicitly wait for the report cell container to be visible (just like Python)
-            // Using a flexible ends-with selector for the ASP.NET dynamically generated ID
             await workingFrame.waitForSelector("td[id$='ReportCell']", { visible: true, timeout: 30000 })
-            await new Promise((r) => setTimeout(r, 2000)) // Short stability buffer
+            await new Promise((r) => setTimeout(r, 2000)) 
 
             const parsedSwipes = await workingFrame.evaluate(() => {
-              // Target the very last report cell table container generated
               const todayTables = document.querySelectorAll("td[id$='ReportCell']")
               const activeTable = todayTables[todayTables.length - 1]
               if (!activeTable) return []
@@ -405,7 +395,6 @@ async function runScraperLogic(mode, credentials) {
             allSwipeData.push(...parsedSwipes)
           }
 
-          // ... end of your for loop iterations ...
           if (day.val !== '1') {
             const backImage = await workingFrame.waitForSelector('#BackImage', { visible: true, timeout: 10000 })
             await backImage.evaluate((node) => node.click())
@@ -414,15 +403,10 @@ async function runScraperLogic(mode, credentials) {
         } catch (dayErr) {
           pushLog(`   ❌ Could not pull ${day.name} logs: ${dayErr.message}`)
         }
-      } // <-- This is the end of the 'for' loop
+      }
 
-      // ==========================================
-      // 🛠️ FIX HERE: Clean Assignment & Direct Push
-      // ==========================================
       if (allSwipeData.length > 0) {
         latestScrapedData.timetable_rows = allSwipeData;
-        
-        // Push a log so you can verify the variable assignment worked
         pushLog(`📥 Injected ${allSwipeData.length} total swipe rows into runtime payload.`);
       }
 
@@ -455,6 +439,7 @@ async function runScraperLogic(mode, credentials) {
       if (missingDates.length > 0) {
         pushLog(`🌐 Missing swipes for ${missingDates.length} day(s). Fetching ESPlus data...`)
         
+        // This leverages the current browser instance (headless if on VPN, or direct otherwise)
         const esPage = await browser.newPage()
         await esPage.setViewport({ width: 1920, height: 1080 })
 
@@ -524,9 +509,47 @@ async function runScraperLogic(mode, credentials) {
 }
 
 // =================================================================
+// 🎨 APPLICATION MENU SETUP
+// =================================================================
+function setApplicationMenu() {
+  const isMac = process.platform === 'darwin'
+
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' }, // Keeps default copy/paste actions
+    { role: 'viewMenu' }, // Keeps default reload/devtools actions
+    { role: 'windowMenu' }, // Keeps default minimize/close actions
+    {
+      label: 'Help',
+      role: 'help',
+      submenu: [
+        {
+          label: 'Releases',
+          click: async () => {
+            await shell.openExternal('https://github.com/pavankokane/cybage-tracker/releases')
+          }
+        },
+        {
+          label: 'Python Tracker',
+          click: async () => {
+            await shell.openExternal('https://github.com/pavankokane/cybage-attendance-scraper')
+          }
+        }
+      ]
+    }
+  ]
+
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+}
+
+// =================================================================
 // 🔀 IPC HANDLER REGISTER PIPELINES
 // =================================================================
 app.whenReady().then(() => {
+  setApplicationMenu() // 👈 Attach the menu when the app launches
+
   ipcMain.handle('get-scraper-data', () => ({
     scraper: scrapingStatus,
     payload: latestScrapedData
