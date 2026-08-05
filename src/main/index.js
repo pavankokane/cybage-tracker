@@ -42,18 +42,43 @@ function createWindow() {
 }
 
 async function isCompanyNetworkAvailable() {
-  try {
-    await Promise.race([
-      dns.lookup('cybagemis.cybage.com'),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout')), 4000)
-      ),
-    ]);
+  return new Promise((resolve) => {
+    let hostname;
 
-    return true;
-  } catch (err) {
-    return false;
-  }
+    try {
+      // Extract hostname from the URL
+      hostname = new URL(URL).hostname;
+    } catch (e) {
+      // Fallback if URL is invalid or only a hostname is provided
+      hostname = "cybagemis.cybage.com";
+    }
+
+    let resolved = false;
+
+    // Fail-safe timeout
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve(false);
+      }
+    }, 4000);
+
+    // Attempt DNS resolution
+    dns.lookup(hostname, (err) => {
+      if (resolved) return;
+
+      clearTimeout(timer);
+      resolved = true;
+
+      if (err) {
+        // ENOTFOUND, EAI_AGAIN, etc.
+        resolve(false);
+      } else {
+        // DNS resolved successfully
+        resolve(true);
+      }
+    });
+  });
 }
 
 // =================================================================
